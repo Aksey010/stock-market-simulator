@@ -109,34 +109,45 @@ export function Chart({ candles, indicators, live }: Props) {
   useEffect(() => {
     const ctx = ctxRef.current
     if (!ctx || !candles.length) return
-    const data = candles.map((c) => ({ time: c.t as UTCTimestamp, open: c.o, high: c.h, low: c.l, close: c.c }))
-    const range = ctx.priceChart.timeScale().getVisibleLogicalRange()
-    ctx.candle.setData(data)
-    ctx.volume.setData(
-      candles.map((c) => ({ time: c.t as UTCTimestamp, value: c.v, color: c.c >= c.o ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)' })),
-    )
-    const ind = indicators
-    if (ind) {
-      const t = (v: number, i: number) => ({ time: candles[i].t as UTCTimestamp, value: v })
-      ctx.sma10.setData(ind.sma_10 ? ind.sma_10.map((v, i) => ({ ...t(v, i), value: v })) : [])
-      ctx.sma20.setData(ind.sma_20 ? ind.sma_20.map((v, i) => ({ ...t(v, i), value: v })) : [])
-      ctx.sma50.setData(ind.sma_50 ? ind.sma_50.map((v, i) => ({ ...t(v, i), value: v })) : [])
-      ctx.ema12.setData(ind.ema_12 ? ind.ema_12.map((v, i) => ({ ...t(v, i), value: v })) : [])
-      ctx.bbU.setData(ind.bb_upper ? ind.bb_upper.map((v, i) => ({ ...t(v, i), value: v })) : [])
-      ctx.bbL.setData(ind.bb_lower ? ind.bb_lower.map((v, i) => ({ ...t(v, i), value: v })) : [])
-      ctx.rsi.setData(ind.rsi_14 ? ind.rsi_14.map((v, i) => ({ ...t(v, i), value: v })) : [])
-      ctx.rsiU.setData(ind.rsi_14 ? ind.rsi_14.map((v, i) => ({ ...t(v, i), value: 70 })) : [])
-      ctx.rsiD.setData(ind.rsi_14 ? ind.rsi_14.map((v, i) => ({ ...t(v, i), value: 30 })) : [])
-      ctx.macd.setData(ind.macd ? ind.macd.map((v, i) => ({ ...t(v, i), value: v })) : [])
-      ctx.macdS.setData(ind.macd_signal ? ind.macd_signal.map((v, i) => ({ ...t(v, i), value: v })) : [])
-      const hist = (ind.macd_hist && candles ? ind.macd_hist.map((v, i) => ({
-        time: candles[i].t as UTCTimestamp, value: v,
-        color: v >= 0 ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)',
-      })) : []) as any[]
-      ctx.macdH.setData(hist as never)
-    }
-    if (range) {
-      try { ctx.priceChart.timeScale().setVisibleLogicalRange(range) } catch { /* ignore */ }
+    try {
+      // sanitize: keep only valid OHLC rows with strictly increasing, finite timestamps
+      const clean = candles.filter(
+        (c) =>
+          Number.isFinite(c.t) && Number.isFinite(c.o) && Number.isFinite(c.h) &&
+          Number.isFinite(c.l) && Number.isFinite(c.c) && c.h >= c.l,
+      ).filter((c, i, a) => i === 0 || c.t > a[i - 1].t)
+      if (!clean.length) return
+      const data = clean.map((c) => ({ time: c.t as UTCTimestamp, open: c.o, high: c.h, low: c.l, close: c.c }))
+      const range = ctx.priceChart.timeScale().getVisibleLogicalRange()
+      ctx.candle.setData(data)
+      ctx.volume.setData(
+        clean.map((c) => ({ time: c.t as UTCTimestamp, value: c.v, color: c.c >= c.o ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)' })),
+      )
+      const ind = indicators
+      if (ind) {
+        const t = (v: number, i: number) => ({ time: clean[i].t as UTCTimestamp, value: v })
+        ctx.sma10.setData(ind.sma_10 ? ind.sma_10.map((v, i) => ({ ...t(v, i), value: v })) : [])
+        ctx.sma20.setData(ind.sma_20 ? ind.sma_20.map((v, i) => ({ ...t(v, i), value: v })) : [])
+        ctx.sma50.setData(ind.sma_50 ? ind.sma_50.map((v, i) => ({ ...t(v, i), value: v })) : [])
+        ctx.ema12.setData(ind.ema_12 ? ind.ema_12.map((v, i) => ({ ...t(v, i), value: v })) : [])
+        ctx.bbU.setData(ind.bb_upper ? ind.bb_upper.map((v, i) => ({ ...t(v, i), value: v })) : [])
+        ctx.bbL.setData(ind.bb_lower ? ind.bb_lower.map((v, i) => ({ ...t(v, i), value: v })) : [])
+        ctx.rsi.setData(ind.rsi_14 ? ind.rsi_14.map((v, i) => ({ ...t(v, i), value: v })) : [])
+        ctx.rsiU.setData(ind.rsi_14 ? ind.rsi_14.map((v, i) => ({ ...t(v, i), value: 70 })) : [])
+        ctx.rsiD.setData(ind.rsi_14 ? ind.rsi_14.map((v, i) => ({ ...t(v, i), value: 30 })) : [])
+        ctx.macd.setData(ind.macd ? ind.macd.map((v, i) => ({ ...t(v, i), value: v })) : [])
+        ctx.macdS.setData(ind.macd_signal ? ind.macd_signal.map((v, i) => ({ ...t(v, i), value: v })) : [])
+        const hist = (ind.macd_hist && clean ? ind.macd_hist.map((v, i) => ({
+          time: clean[i].t as UTCTimestamp, value: v,
+          color: v >= 0 ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)',
+        })) : []) as any[]
+        ctx.macdH.setData(hist as never)
+      }
+      if (range) {
+        try { ctx.priceChart.timeScale().setVisibleLogicalRange(range) } catch { /* ignore */ }
+      }
+    } catch {
+      // never let bad chart data take down the app
     }
   }, [candles, indicators])
 

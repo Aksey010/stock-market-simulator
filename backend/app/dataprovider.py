@@ -60,7 +60,11 @@ def _scalar(x):
 def _to_candles(df: pd.DataFrame) -> list[Candle]:
     if df is None or df.empty:
         return []
-    idx = df.index.astype("int64") // 10**6
+    if isinstance(df.index, pd.DatetimeIndex):
+        idx = (df.index.astype("int64") // 10**6).to_numpy()
+    else:
+        # datetime lives in the first column (e.g. after resampling)
+        idx = (pd.to_datetime(df[df.columns[0]]).astype("int64") // 10**6).to_numpy()
     opens = df["Open"].to_numpy()
     highs = df["High"].to_numpy()
     lows = df["Low"].to_numpy()
@@ -94,6 +98,9 @@ def fetch_candles(symbol: str, timeframe: str, limit: int = 400) -> Optional[lis
         return None
     try:
         interval, period = _YF_TF[timeframe]
+        if timeframe == "4h":
+            # yfinance has no native 4h interval; fetch 1h and resample
+            interval = "1h"
         df = yf.download(
             symbol,
             interval=interval,
@@ -104,6 +111,10 @@ def fetch_candles(symbol: str, timeframe: str, limit: int = 400) -> Optional[lis
         )
         if df is None or df.empty:
             return None
+        if isinstance(df.columns, pd.MultiIndex):
+            # yfinance may return ('Open','AAPL')-style multi-level columns;
+            # keep the field name level (level 0) so df["Open"] works
+            df.columns = df.columns.get_level_values(0)
         df = df.reset_index()
         if timeframe == "4h":
             df = _resample_4h(df)
