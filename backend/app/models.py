@@ -49,6 +49,8 @@ class BarSeries(BaseModel):
     symbol: str
     timeframe: str
     values: list[Candle]
+    source: str = "sim"
+    note: str = ""
 
 
 class OrderBookLevel(BaseModel):
@@ -125,6 +127,7 @@ class BacktestConfig(BaseModel):
     params: dict = {}
     initial_cash: float = 10000.0
     commission: float = 0.001
+    source: str = "sim"
 
 
 class BacktestResult(BaseModel):

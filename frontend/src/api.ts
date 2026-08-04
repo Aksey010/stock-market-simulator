@@ -4,11 +4,15 @@ import type {
   BacktestResult,
   BarSeries,
   Indicators,
+  MarketSources,
   Order,
   OrderBook,
   OrderRequest,
   Portfolio,
   Quote,
+  RealQuote,
+  RLJob,
+  RLSignal,
   SymbolInfo,
   Trade,
 } from './types'
@@ -37,13 +41,15 @@ export const api = {
   index: () => get<{ name: string; level: number; change_pct: number; components: number }>('/api/index'),
   sectors: () => get<Record<string, string[]>>('/api/sectors'),
   sectorPerf: () => get<{ sector: string; change_pct: number; count: number }[]>('/api/sectors/performance'),
-  candles: (symbol: string, timeframe: string, limit = 400) =>
-    get<BarSeries>(`/api/candles/${symbol}?timeframe=${timeframe}&limit=${limit}`),
-  indicators: (symbol: string, timeframe: string, limit = 400) =>
-    get<Indicators>(`/api/indicators/${symbol}?timeframe=${timeframe}&limit=${limit}`),
+  candles: (symbol: string, timeframe: string, limit = 400, source = 'sim') =>
+    get<BarSeries>(`/api/candles/${symbol}?timeframe=${timeframe}&limit=${limit}&source=${source}`),
+  indicators: (symbol: string, timeframe: string, limit = 400, source = 'sim') =>
+    get<Indicators>(`/api/indicators/${symbol}?timeframe=${timeframe}&limit=${limit}&source=${source}`),
   orderbook: (symbol: string) => get<OrderBook>(`/api/orderbook/${symbol}`),
-  analysis: (symbol: string, timeframe = '5m') =>
-    get<Analysis>(`/api/analysis/${symbol}?timeframe=${timeframe}`),
+  analysis: (symbol: string, timeframe = '5m', source = 'sim') =>
+    get<Analysis>(`/api/analysis/${symbol}?timeframe=${timeframe}&source=${source}`),
+  marketSources: () => get<MarketSources>('/api/market/sources'),
+  realQuote: (symbol: string) => get<RealQuote>(`/api/quote/${symbol}`),
   correlations: (symbols: string[]) =>
     get<{ correlation: { symbols: string[]; corr: number[][] } }>(
       `/api/analysis/correlations?symbols=${encodeURIComponent(symbols.join(','))}`,
@@ -61,4 +67,11 @@ export const api = {
     fetch(`${BASE}/api/orders/${id}`, { method: 'DELETE' }).then((r) => r.json()),
   backtest: (cfg: BacktestConfigReq) => post<BacktestResult>('/api/backtest', cfg),
   strategies: () => get<{ strategies: string[]; timeframes: string[] }>('/api/strategies'),
+  rlTrain: (symbol: string, timeframe: string, episodes: number, source = 'sim') =>
+    post<{ job_id: string; status: string }>(
+      `/api/rl/train?symbol=${symbol}&timeframe=${timeframe}&episodes=${episodes}&source=${source}`, {}),
+  rlJob: (jobId: string) => get<RLJob>(`/api/rl/train/${jobId}`),
+  rlSignal: (symbol: string, timeframe = '1d', source = 'sim') =>
+    get<RLSignal>(`/api/rl/signal/${symbol}?timeframe=${timeframe}&source=${source}`),
+  rlAgents: () => get<{ agents: { symbol: string; timeframe: string; trained_episodes: number; return_pct: number; q_size: number }[] }>('/api/rl/agents'),
 }

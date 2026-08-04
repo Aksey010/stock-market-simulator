@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { Analysis, SymbolInfo } from '../types'
 
-export function AnalysisPanel({ symbol, symbols, allSymbols }: { symbol: string; symbols: SymbolInfo[]; allSymbols: string[] }) {
+export function AnalysisPanel({ symbol, symbols, allSymbols, source }: { symbol: string; symbols: SymbolInfo[]; allSymbols: string[]; source?: 'sim' | 'real' }) {
   const [an, setAn] = useState<Analysis | null>(null)
   const [corr, setCorr] = useState<{ symbols: string[]; corr: number[][] } | null>(null)
   const [risk, setRisk] = useState<Record<string, unknown> | null>(null)
@@ -10,8 +10,8 @@ export function AnalysisPanel({ symbol, symbols, allSymbols }: { symbol: string;
   const [corrSymbols, setCorrSymbols] = useState(allSymbols.slice(0, 6))
 
   useEffect(() => {
-    api.analysis(symbol).then(setAn).catch(() => setAn(null))
-  }, [symbol])
+    api.analysis(symbol, '5m', source || 'sim').then(setAn).catch(() => setAn(null))
+  }, [symbol, source])
 
   useEffect(() => {
     api.correlations(corrSymbols).then((r) => setCorr(r.correlation)).catch(() => setCorr(null))

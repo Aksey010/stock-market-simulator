@@ -4,7 +4,7 @@ import type { BacktestResult } from '../types'
 
 const STRATS = ['sma_cross', 'ema_cross', 'rsi_mean_revert', 'macd_signal', 'bollinger_revert', 'buy_and_hold', 'momentum']
 
-export function BacktestPanel({ symbol }: { symbol: string }) {
+export function BacktestPanel({ symbol, source }: { symbol: string; source?: 'sim' | 'real' }) {
   const [strategy, setStrategy] = useState('sma_cross')
   const [timeframe, setTimeframe] = useState('1d')
   const [cash, setCash] = useState(10000)
@@ -15,7 +15,7 @@ export function BacktestPanel({ symbol }: { symbol: string }) {
   const run = async () => {
     setLoading(true); setErr('')
     try {
-      const r = await api.backtest({ symbol, timeframe, strategy, initial_cash: cash, commission: 0.001 })
+      const r = await api.backtest({ symbol, timeframe, strategy, initial_cash: cash, commission: 0.001, source: source || 'sim' })
       setResult(r)
     } catch (e: any) {
       setErr(e.message)
@@ -24,7 +24,7 @@ export function BacktestPanel({ symbol }: { symbol: string }) {
     }
   }
 
-  useEffect(() => { run() }, [symbol])
+  useEffect(() => { run() }, [symbol, source])
 
   const m = result?.metrics || {}
   const eq = result?.equity_curve || []

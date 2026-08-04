@@ -22,6 +22,66 @@ export interface BarSeries {
   symbol: string
   timeframe: string
   values: Candle[]
+  source?: string
+  note?: string
+}
+
+export interface RealQuote {
+  symbol: string
+  price: number
+  change_pct: number
+  currency: string
+}
+
+export interface MarketSources {
+  real_available: boolean
+  real_timeframes: string[]
+  mode: string
+}
+
+export interface RLJob {
+  job_id: string
+  status: string
+  progress?: number
+  symbol?: string
+  result?: RLResult
+  error?: string
+}
+
+export interface RLResult {
+  symbol: string
+  timeframe: string
+  final_equity: number
+  return_pct: number
+  benchmark_return_pct: number
+  sharpe: number
+  volatility_pct: number
+  total_reward: number
+  action_counts: { HOLD: number; BUY: number; SELL: number }
+  trained_on: number
+  episodes: number
+  equity_curve: number[]
+  episode_rewards: number[]
+}
+
+export interface RLSignal {
+  symbol: string
+  signal: 'buy' | 'sell' | 'hold'
+  confidence: number
+  price: number
+  rsi: number
+  roc: number
+  trained: boolean
+  timeframe: string
+  source: string
+}
+
+export interface RLAgentStatus {
+  symbol: string
+  timeframe: string
+  trained_episodes: number
+  return_pct: number
+  q_size: number
 }
 
 export interface Indicators {
@@ -176,6 +236,7 @@ export interface BacktestConfigReq {
   strategy: string
   initial_cash: number
   commission: number
+  source?: string
 }
 
 export interface BacktestResult {

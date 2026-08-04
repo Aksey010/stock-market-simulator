@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from './api'
-import type { Candle, Indicators, Quote, SymbolInfo } from './types'
+import type { Candle, Indicators, MarketSources, Quote, SymbolInfo } from './types'
 import { useWebSocket, type WsMessage } from './hooks/useWebSocket'
 import { Chart } from './components/Chart'
 import { TickerTape } from './components/TickerTape'
@@ -10,15 +10,19 @@ import { TradingPanel } from './components/TradingPanel'
 import { PortfolioView } from './components/PortfolioView'
 import { AnalysisPanel } from './components/AnalysisPanel'
 import { BacktestPanel } from './components/BacktestPanel'
+import { RLAgentPanel } from './components/RLAgentPanel'
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d']
 
-type Tab = 'trading' | 'portfolio' | 'analysis' | 'backtest'
+type Tab = 'trading' | 'portfolio' | 'analysis' | 'backtest' | 'rl'
+type DataSource = 'sim' | 'real'
 
 export default function App() {
   const [symbols, setSymbols] = useState<SymbolInfo[]>([])
   const [selected, setSelected] = useState('AAPL')
   const [timeframe, setTimeframe] = useState('5m')
+  const [source, setSource] = useState<DataSource>('sim')
+  const [sourcesInfo, setSourcesInfo] = useState<MarketSources | null>(null)
   const [quotes, setQuotes] = useState<Record<string, Quote>>({})
   const [indexInfo, setIndexInfo] = useState<{ level: number; change_pct: number } | null>(null)
   const [book, setBook] = useState<{ symbol: string; asks: { price: number; size: number }[]; bids: { price: number; size: number }[] } | null>(null)
@@ -29,8 +33,11 @@ export default function App() {
   const [livePrice, setLivePrice] = useState<number | null>(null)
   const livePriceRef = useRef<number | null>(null)
   const selectedRef = useRef(selected)
+  const sourceRef = useRef<DataSource>('sim')
+  const [candleNote, setCandleNote] = useState('')
 
   useEffect(() => { selectedRef.current = selected }, [selected])
+  useEffect(() => { sourceRef.current = source }, [source])
 
   // Retry initial loads until the backend is reachable.
   useEffect(() => {
@@ -66,16 +73,25 @@ export default function App() {
 
   useEffect(() => { refreshQuotes(); const t = setInterval(refreshQuotes, 2000); return () => clearInterval(t) }, [refreshQuotes])
 
+  // market sources availability
+  useEffect(() => {
+    api.marketSources().then(setSourcesInfo).catch(() => {})
+  }, [])
+
   // Load candles + indicators, retrying until they arrive.
   useEffect(() => {
     let stopped = false
     let timer = 0
     const load = async () => {
       try {
-        const [b, ind] = await Promise.all([api.candles(selected, timeframe, 400), api.indicators(selected, timeframe, 400)])
+        const [b, ind] = await Promise.all([
+          api.candles(selected, timeframe, 400, source),
+          api.indicators(selected, timeframe, 400, source),
+        ])
         if (stopped) return
         setCandles(b.values)
         setIndicators(ind)
+        setCandleNote(b.note || '')
         if (b.values.length) setLivePrice(b.values[b.values.length - 1].c)
       } catch {
         if (!stopped) timer = window.setTimeout(load, 1500)
@@ -83,7 +99,7 @@ export default function App() {
     }
     load()
     return () => { stopped = true; clearTimeout(timer) }
-  }, [selected, timeframe])
+  }, [selected, timeframe, source])
 
   // Order book: fetch over REST as a fallback, refresh periodically while WS is down.
   useEffect(() => {
@@ -109,18 +125,33 @@ export default function App() {
     const t = setInterval(async () => {
       if (stopped) return
       try {
-        const b = await api.candles(selected, timeframe, 400)
-        if (!stopped) setCandles(b.values)
+        const b = await api.candles(selected, timeframe, 400, source)
+        if (!stopped) { setCandles(b.values); setCandleNote(b.note || '') }
       } catch { /* ignore */ }
     }, intervalMs)
     return () => { stopped = true; clearInterval(t) }
-  }, [selected, timeframe, tab])
+  }, [selected, timeframe, tab, source])
+
+  // Real quote polling when Real mode is active (live WS feed stays simulated).
+  useEffect(() => {
+    if (source !== 'real') return
+    let stopped = false
+    const load = async () => {
+      try {
+        const q = await api.realQuote(selected)
+        if (!stopped) setLivePrice(q.price)
+      } catch { /* ignore */ }
+    }
+    load()
+    const t = setInterval(load, 15000)
+    return () => { stopped = true; clearInterval(t) }
+  }, [source, selected])
 
   const onWs = useCallback((msg: WsMessage) => {
     if (msg.type === 'hello') setConnected(true)
     if (msg.type === 'live' && msg.quotes) {
       msg.quotes.forEach((q) => {
-        if (q.symbol === selectedRef.current) {
+        if (q.symbol === selectedRef.current && sourceRef.current === 'sim') {
           livePriceRef.current = q.price
           setLivePrice(q.price)
         }
@@ -157,10 +188,22 @@ export default function App() {
           </span>
         </div>
         <nav className="tabs">
-          {(['trading', 'portfolio', 'analysis', 'backtest'] as Tab[]).map((t) => (
+          {(['trading', 'portfolio', 'analysis', 'backtest', 'rl'] as Tab[]).map((t) => (
             <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{t}</button>
           ))}
         </nav>
+        <div className="source-switch" title="Chart data source">
+          <button
+            className={source === 'sim' ? 'on' : ''}
+            onClick={() => setSource('sim')}
+            disabled={!sourcesInfo?.real_available && source === 'sim'}
+          >SIM</button>
+          <button
+            className={source === 'real' ? 'on' : ''}
+            onClick={() => setSource('real')}
+            disabled={!sourcesInfo?.real_available}
+          >REAL</button>
+        </div>
         <div className="conn">
           <span className={`dot ${connected ? 'on' : ''}`} /> {connected ? 'LIVE' : 'connecting…'}
         </div>
@@ -191,7 +234,12 @@ export default function App() {
           {tab === 'trading' && (
             <div className="trading-layout">
               <div className="chart-wrap card">
-                <Chart candles={candles} indicators={indicators} live={{ price: livePrice ?? undefined, ts: Date.now() }} />
+                {candleNote && <div className="candle-note">{candleNote}</div>}
+                <Chart
+                  candles={candles}
+                  indicators={indicators}
+                  live={source === 'sim' ? { price: livePrice ?? undefined, ts: Date.now() } : undefined}
+                />
               </div>
               <div className="side-col">
                 <OrderBookView book={book} />
@@ -200,8 +248,9 @@ export default function App() {
             </div>
           )}
           {tab === 'portfolio' && <PortfolioView prices={prices} />}
-          {tab === 'analysis' && <AnalysisPanel symbol={selected} symbols={symbols} allSymbols={allSymbols} />}
-          {tab === 'backtest' && <BacktestPanel symbol={selected} />}
+          {tab === 'analysis' && <AnalysisPanel symbol={selected} symbols={symbols} allSymbols={allSymbols} source={source} />}
+          {tab === 'backtest' && <BacktestPanel symbol={selected} source={source} />}
+          {tab === 'rl' && <RLAgentPanel symbol={selected} source={source} />}
         </main>
       </div>
     </div>

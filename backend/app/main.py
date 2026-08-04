@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from . import analysis as ds
-from . import backtest, indicators as ta, marketdata as md
+from . import backtest, dataprovider, indicators as ta, marketdata as md, rlagent
 from .models import (
     BacktestConfig,
     BarSeries,
@@ -22,6 +22,8 @@ from .models import (
     SymbolInfo,
 )
 from .portfolio import get_default_trader
+
+import pandas as pd
 
 app = FastAPI(
     title="Market Simulator API",
@@ -150,10 +152,19 @@ def sector_groups():
 
 
 @app.get("/api/candles/{symbol}")
-def candles(symbol: str, timeframe: str = Query(DEFAULT_TS, pattern="^(1m|5m|15m|1h|4h|1d)$"), limit: int = Query(400, ge=10, le=2000)):
+def candles(symbol: str, timeframe: str = Query(DEFAULT_TS, pattern="^(1m|5m|15m|1h|4h|1d)$"),
+            limit: int = Query(400, ge=10, le=2000), source: str = Query("sim", pattern="^(sim|real)$")):
     symbol = symbol.upper()
     if symbol not in md.REGS:
         raise HTTPException(404, f"unknown symbol {symbol}")
+    if source == "real":
+        real = dataprovider.fetch_candles(symbol, timeframe, limit)
+        if real:
+            return BarSeries(symbol=symbol, timeframe=timeframe, values=real)
+        return BarSeries(
+            symbol=symbol, timeframe=timeframe, source="real",
+            values=[], note="Real data unavailable - falling back to simulation",
+        )
     key = (symbol, timeframe)
     with _live_lock:
         if key not in _built_hist:
@@ -175,11 +186,12 @@ def candles(symbol: str, timeframe: str = Query(DEFAULT_TS, pattern="^(1m|5m|15m
 
 
 @app.get("/api/indicators/{symbol}")
-def indicators(symbol: str, timeframe: str = Query(DEFAULT_TS), limit: int = Query(400)):
+def indicators(symbol: str, timeframe: str = Query(DEFAULT_TS), limit: int = Query(400),
+               source: str = Query("sim", pattern="^(sim|real)$")):
     symbol = symbol.upper()
     if symbol not in md.REGS:
         raise HTTPException(404, f"unknown symbol {symbol}")
-    bars = candles(symbol, timeframe, limit)
+    bars = candles(symbol, timeframe, limit, source)
     df = _df_from_candles(bars.values)
     return ta.compute_all(df)
 
@@ -208,6 +220,32 @@ def quotes():
             }
             for s in states.values()
         ]
+    }
+
+
+@app.get("/api/quote/{symbol}")
+def real_quote(symbol: str):
+    symbol = symbol.upper()
+    if symbol not in md.REGS:
+        raise HTTPException(404, f"unknown symbol {symbol}")
+    q = dataprovider.fetch_quote(symbol)
+    if q is None:
+        st = _ensure_state(symbol)
+        q = {
+            "symbol": symbol,
+            "price": round(st.price, 4),
+            "change_pct": round((st.price / st.info.initial_price - 1) * 100, 3),
+            "currency": "USD",
+        }
+    return q
+
+
+@app.get("/api/market/sources")
+def market_sources():
+    return {
+        "real_available": dataprovider.real_available(),
+        "real_timeframes": sorted(dataprovider.REAL_TIMEFRAMES),
+        "mode": "hybrid",
     }
 
 
@@ -255,9 +293,10 @@ def insights(symbols: str = Query(",".join(SYMBOLS[:6]))):
 
 
 @app.get("/api/analysis/{symbol}")
-def analysis(symbol: str, timeframe: str = Query(DEFAULT_TS), limit: int = Query(400)):
+def analysis(symbol: str, timeframe: str = Query(DEFAULT_TS), limit: int = Query(400),
+             source: str = Query("sim", pattern="^(sim|real)$")):
     symbol = symbol.upper()
-    bars = candles(symbol, timeframe, limit).values
+    bars = candles(symbol, timeframe, limit, source).values
     closes = [float(b.c) for b in bars]
     ind = ta.compute_all(_df_from_candles(bars))
     return {
@@ -318,11 +357,16 @@ def run_backtest(cfg: BacktestConfig):
         raise HTTPException(404, f"unknown symbol {cfg.symbol}")
     if cfg.strategy not in STRATEGIES:
         raise HTTPException(400, f"unknown strategy, allowed: {STRATEGIES}")
-    key = (cfg.symbol, cfg.timeframe)
-    with _live_lock:
-        if key not in _built_hist:
-            _built_hist[key] = md.build_hist(cfg.symbol, cfg.timeframe, limit=2000)
-        bars = _built_hist[key]
+    if cfg.source == "real":
+        bars = dataprovider.fetch_candles(cfg.symbol, cfg.timeframe, 2000)
+        if not bars:
+            raise HTTPException(400, "real data unavailable, retry with source=sim")
+    else:
+        key = (cfg.symbol, cfg.timeframe)
+        with _live_lock:
+            if key not in _built_hist:
+                _built_hist[key] = md.build_hist(cfg.symbol, cfg.timeframe, limit=2000)
+            bars = _built_hist[key]
     try:
         return backtest.run(cfg, bars)
     except ValueError as e:
@@ -332,6 +376,69 @@ def run_backtest(cfg: BacktestConfig):
 @app.get("/api/strategies")
 def strategies():
     return {"strategies": STRATEGIES, "timeframes": TIMEFRAMES}
+
+
+def _candles_for_train(symbol: str, timeframe: str, source: str, limit: int):
+    bars = candles(symbol, timeframe, limit, source)
+    return bars.values
+
+
+@app.post("/api/rl/train", status_code=202)
+def rl_train(symbol: str, timeframe: str = Query("1d"), source: str = Query("sim", pattern="^(sim|real)$"),
+             episodes: int = Query(120, ge=20, le=1000), initial_cash: float = Query(10000.0)):
+    symbol = symbol.upper()
+    if symbol not in md.REGS:
+        raise HTTPException(404, f"unknown symbol {symbol}")
+    job_id = rlagent._start_train(symbol, timeframe, source, episodes, initial_cash, _candles_for_train)
+    return {"job_id": job_id, "status": "training", "symbol": symbol}
+
+
+@app.get("/api/rl/train/{job_id}")
+def rl_train_status(job_id: str):
+    job = rlagent.get_job(job_id)
+    if not job:
+        raise HTTPException(404, "job not found")
+    return job
+
+
+@app.get("/api/rl/agents")
+def rl_agents():
+    return {"agents": rlagent.agents_status()}
+
+
+@app.get("/api/rl/signal/{symbol}")
+def rl_signal(symbol: str, timeframe: str = Query("1d"), source: str = Query("sim", pattern="^(sim|real)$")):
+    symbol = symbol.upper()
+    if symbol not in md.REGS:
+        raise HTTPException(404, f"unknown symbol {symbol}")
+    agent = rlagent.get_agent(symbol)
+    bars = candles(symbol, timeframe, 120, source).values
+    if not bars:
+        raise HTTPException(400, "no data")
+    closes = [float(b.c) for b in bars]
+    rsi = ta.rsi(pd.Series(closes), 14).iloc[-1]
+    roc = (closes[-1] / closes[-11] - 1) * 100 if len(closes) > 11 else 0.0
+    holding = False
+    if agent is None:
+        label = "hold"
+        confidence = 1.0
+        trained = False
+    else:
+        pred = agent.predict(float(rsi), float(roc), holding)
+        label = pred["action"]
+        confidence = pred["confidence"]
+        trained = True
+    return {
+        "symbol": symbol,
+        "signal": label,
+        "confidence": round(float(confidence), 3),
+        "price": closes[-1],
+        "rsi": round(float(rsi), 2),
+        "roc": round(float(roc), 2),
+        "trained": trained,
+        "timeframe": timeframe,
+        "source": source,
+    }
 
 
 @app.websocket("/ws")

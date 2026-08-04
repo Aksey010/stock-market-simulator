@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from app import analysis as ds
-from app import backtest, indicators as ta, marketdata as md
+from app import backtest, indicators as ta, marketdata as md, rlagent
 from app.models import BacktestConfig
 from app.portfolio import PaperTrader
 
@@ -110,6 +110,43 @@ class TestPaperTrader(unittest.TestCase):
         p = self.t.portfolio()
         self.assertEqual(len(p.positions), 1)
         self.assertAlmostEqual(p.account_value, 9999.5, places=1)
+
+
+class TestRLAgent(unittest.TestCase):
+    def test_train_returns_metrics(self):
+        closes = [float(c.c) for c in md.build_hist("AAPL", "1d", 400)]
+        agent = rlagent.RLAgent("AAPL", "1d")
+        m = agent.train(closes, 10000, episodes=20)
+        for k in ("final_equity", "return_pct", "benchmark_return_pct", "sharpe", "equity_curve", "episode_rewards"):
+            self.assertIn(k, m)
+        self.assertEqual(len(m["equity_curve"]), len(closes))
+        self.assertEqual(len(m["episode_rewards"]), 20)
+
+    def test_predict_shape(self):
+        closes = [float(c.c) for c in md.build_hist("MSFT", "1d", 300)]
+        agent = rlagent.RLAgent("MSFT", "1d")
+        agent.train(closes, 10000, episodes=10)
+        p = agent.predict(45.0, 1.2, False)
+        self.assertIn(p["action"], {"buy", "sell", "hold"})
+        self.assertLessEqual(p["confidence"], 1.0)
+        self.assertEqual(len(p["q_values"]), 3)
+
+    def test_q_table_shape(self):
+        self.assertEqual(rlagent.N_STATES * rlagent.N_ACTIONS, 5 * 3 * 2 * 3)
+
+
+class TestDataProvider(unittest.TestCase):
+    def test_real_data_or_fallback(self):
+        from app import dataprovider
+
+        if not dataprovider.real_available():
+            self.skipTest("no internet")
+        candles = dataprovider.fetch_candles("AAPL", "1d", 50)
+        self.assertIsNotNone(candles)
+        self.assertGreaterEqual(len(candles), 20)
+        quote = dataprovider.fetch_quote("AAPL")
+        self.assertIsNotNone(quote)
+        self.assertGreater(quote["price"], 0)
 
 
 class OrderReq:

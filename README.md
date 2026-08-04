@@ -33,9 +33,24 @@ A full-stack **paper-trading stock market simulator** built as a portfolio showc
 - **Correlation & covariance matrices**, portfolio risk analysis (expected return, vol, Sharpe)
 - Market regime detection + heuristic text insights + Monte-Carlo-style 30-step forecast
 
+### Real market data (yfinance)
+- Toggle **SIM / REAL** in the header
+- REAL loads historical OHLCV straight from Yahoo Finance (all 6 timeframes, cached), with a real live quote for the selected ticker
+- If yfinance is unreachable it gracefully falls back to the simulator
+
+### Reinforcement-Learning trading agent
+- Tabular **Q-learning** agent trained on the selected symbol/timeframe (Authenticator: RSI + momentum + position state, buy/sell/hold actions)
+- Train in the browser with progress bar; see equity curve, per-episode rewards, action breakdown
+- **Live signal** (buy/sell/hold) with confidence from the trained agent
+- Data source-aware (train on simulated or real candles)
+
 ### Backtesting
 - 7 strategies: SMA cross, EMA cross, RSI mean-revert, MACD signal, Bollinger revert, momentum, buy & hold
 - Equity curve, Sharpe, return vs benchmark, max drawdown, win rate, trade log
+- Choose simulated or real data
+
+### Mobile responsive
+- Adaptive layout for tablets and phones (collapsible watchlist, stacked panels, scrollable tabs)
 
 ---
 
@@ -130,7 +145,7 @@ frontend\run_frontend.bat   # frontend only
 cd backend
 venv\Scripts\python -m unittest tests.test_app -v
 ```
-15 tests covering the price engine, indicators, analytics, backtesting and the paper-trading engine.
+19 tests covering the price engine, indicators, analytics, backtesting, the paper-trading engine, the RL agent and the real-data provider.
 
 ---
 
@@ -139,16 +154,20 @@ venv\Scripts\python -m unittest tests.test_app -v
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/symbols` | Symbol catalog |
-| GET | `/api/candles/{symbol}?timeframe=&limit=` | OHLCV bars |
+| GET | `/api/candles/{symbol}?timeframe=&limit=&source=` | OHLCV bars (sim or real) |
 | GET | `/api/indicators/{symbol}` | 22 technical indicator series |
 | GET | `/api/orderbook/{symbol}` | Simulated order book |
 | GET | `/api/quotes` | All live quotes |
+| GET | `/api/quote/{symbol}` | Real live quote (yfinance) |
+| GET | `/api/market/sources` | Real-data availability |
 | GET | `/api/index` · `/api/sectors/performance` | Index & sector heat |
 | GET | `/api/analysis/{symbol}` | Stats, regime, forecast |
 | GET | `/api/analysis/correlations` · `/portfolio_risk` · `/insights` | Cross-sectional analytics |
 | POST | `/api/orders` · `DELETE /api/orders/{id}` | Paper trading |
 | GET | `/api/portfolio` · `/api/trades` · `/api/equity-history` | Account state |
 | POST | `/api/backtest` | Run a strategy backtest |
+| POST | `/api/rl/train` · `GET /api/rl/train/{id}` | Train RL agent / poll progress |
+| GET | `/api/rl/signal/{symbol}` · `/api/rl/agents` | RL live signal / agents |
 | WS | `/ws` | Live quotes + order book streaming |
 
 Interactive docs: `http://localhost:8000/docs`
@@ -162,16 +181,18 @@ stock-simulator/
 │  ├─ app/
 │  │  ├─ main.py          # FastAPI app, REST + WebSocket
 │  │  ├─ marketdata.py    # simulation engine (regimes, OHLCV, order book)
+│  │  ├─ dataprovider.py  # real market data via yfinance (cached, w/ fallback)
 │  │  ├─ indicators.py    # 22 TA indicators (numpy/pandas)
 │  │  ├─ analysis.py      # data-science metrics & analytics
 │  │  ├─ backtest.py      # strategy backtesting engine
+│  │  ├─ rlagent.py       # Q-learning trading agent
 │  │  ├─ portfolio.py     # paper-trading order engine
 │  │  └─ models.py        # pydantic schemas
 │  ├─ tests/test_app.py
 │  └─ requirements.txt
 ├─ frontend/
 │  ├─ src/
-│  │  ├─ components/      # Chart, OrderBook, Watchlist, Trading, Portfolio, Analysis, Backtest
+│  │  ├─ components/      # Chart, OrderBook, Watchlist, Trading, Portfolio, Analysis, Backtest, RLAgent
 │  │  ├─ hooks/useWebSocket.ts
 │  │  ├─ api.ts · types.ts
 │  │  └─ App.tsx · styles.css
@@ -183,15 +204,16 @@ stock-simulator/
 ---
 
 ## 🛠 Tech stack
-- **Backend:** Python 3.12 · FastAPI · Uvicorn · pandas · numpy
+- **Backend:** Python 3.12 · FastAPI · Uvicorn · pandas · numpy · yfinance (real data)
 - **Frontend:** React 18 · TypeScript · Vite · lightweight-charts (TradingView)
+- **ML:** Tabular Q-learning RL agent (numpy)
 - **Infra:** Docker Compose
 
 ## 📌 Roadmap / ideas
-- [ ] Historical price import (real data via yfinance)
-- [ ] Reinforcement-learning trading agent
+- [x] Historical price import (real data via yfinance)
+- [x] Reinforcement-learning trading agent
 - [ ] Multi-user accounts & auth
-- [ ] Mobile-responsive trading layout
+- [x] Mobile-responsive trading layout
 - [ ] Alert engine + notifications
 
 MIT licensed.

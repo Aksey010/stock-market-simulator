@@ -168,3 +168,58 @@ input:focus, select:focus { border-color: var(--blue); }
   .bt-metrics { grid-template-columns: repeat(3, 1fr); }
   .layout { grid-template-columns: 200px 1fr; }
 }
+
+/* ==== RL Agent ==== */
+.rl-controls { display: flex; gap: 10px; padding: 10px 12px; align-items: end; flex-wrap: wrap; }
+.rl-controls .fld { padding: 0; }
+.rl-progress { margin: 0 12px; height: 8px; border-radius: 4px; background: var(--panel2); overflow: hidden; }
+.rl-progress .bar { height: 100%; background: linear-gradient(90deg, var(--blue), var(--green)); transition: width .3s; }
+.rl-signal { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px 12px; }
+.signal-box { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 4px; }
+.signal-box b { font-size: 26px; }
+.rl-metrics { grid-template-columns: repeat(6, 1fr); }
+.rl-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 12px; }
+.rl-chart { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+.rl-actions { display: flex; gap: 10px; padding: 4px 12px; }
+.rl-actions span { padding: 4px 12px; border-radius: 6px; background: var(--panel2); border: 1px solid var(--border); font-size: 12px; }
+.hint2 { display: block; font-size: 11px; }
+
+/* ==== Data source switch ==== */
+.source-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.source-switch button { padding: 5px 12px; font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .5px; }
+.source-switch button.on { background: var(--green); color: #04140f; }
+.source-switch button:disabled { opacity: .4; cursor: not-allowed; }
+
+.candle-note { padding: 6px 12px; font-size: 12px; color: var(--amber); background: rgba(245,183,74,.08); border-bottom: 1px solid var(--border); }
+
+/* ==== Mobile responsive ==== */
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; overflow: auto; }
+  .watchlist { border-right: none; border-bottom: 1px solid var(--border); max-height: 200px; }
+  .wl-list { max-height: 160px; }
+  .main { padding: 8px; }
+  .topbar { flex-wrap: wrap; gap: 8px; padding: 8px; }
+  .brand { order: 1; }
+  .conn { order: 2; margin-left: auto; }
+  .tabs { order: 3; width: 100%; overflow-x: auto; margin-left: 0; }
+  .source-switch { order: 4; }
+  .index-pill { display: none; }
+  .symbol-header { flex-wrap: wrap; gap: 8px; }
+  .tf-buttons { margin-left: 0; order: 4; width: 100%; overflow-x: auto; }
+  .big-price { font-size: 22px; }
+  .rl-signal, .rl-charts { grid-template-columns: 1fr; }
+  .rl-metrics { grid-template-columns: repeat(2, 1fr); }
+  .p-summary { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 560px) {
+  .bt-metrics { grid-template-columns: repeat(2, 1fr); }
+  .trading-layout { grid-template-columns: 1fr; }
+  .side-col { flex-direction: column; }
+  .tt-buy-sell, .bt-controls { padding: 0 8px; }
+  .fld { padding: 0 8px; }
+  .p-summary { grid-template-columns: 1fr; }
+  .tabs button { padding: 5px 10px; }
+  .source-switch button { padding: 5px 8px; }
+  .ticker-item { padding: 6px 10px; }
+}
