@@ -32,9 +32,27 @@ export default function App() {
 
   useEffect(() => { selectedRef.current = selected }, [selected])
 
+  // Retry initial loads until the backend is reachable.
   useEffect(() => {
-    api.symbols().then(setSymbols).catch(() => {})
-    api.index().then(setIndexInfo).catch(() => {})
+    let stopped = false
+    const load = async () => {
+      try {
+        const [s, ix] = await Promise.all([api.symbols(), api.index()])
+        if (stopped) return
+        setSymbols(s)
+        setIndexInfo(ix)
+        return true
+      } catch {
+        return false
+      }
+    }
+    let timer = 0
+    const attempt = async () => {
+      const ok = await load()
+      if (!ok && !stopped) timer = window.setTimeout(attempt, 1500)
+    }
+    attempt()
+    return () => { stopped = true; clearTimeout(timer) }
   }, [])
 
   const refreshQuotes = useCallback(async () => {
@@ -46,15 +64,57 @@ export default function App() {
     } catch { /* ignore */ }
   }, [])
 
-  useEffect(() => { refreshQuotes(); const t = setInterval(refreshQuotes, 4000); return () => clearInterval(t) }, [refreshQuotes])
+  useEffect(() => { refreshQuotes(); const t = setInterval(refreshQuotes, 2000); return () => clearInterval(t) }, [refreshQuotes])
 
+  // Load candles + indicators, retrying until they arrive.
   useEffect(() => {
-    api.candles(selected, timeframe, 400).then((b) => {
-      setCandles(b.values)
-      setLivePrice(b.values.length ? b.values[b.values.length - 1].c : null)
-    }).catch(() => {})
-    api.indicators(selected, timeframe, 400).then(setIndicators).catch(() => setIndicators(null))
+    let stopped = false
+    let timer = 0
+    const load = async () => {
+      try {
+        const [b, ind] = await Promise.all([api.candles(selected, timeframe, 400), api.indicators(selected, timeframe, 400)])
+        if (stopped) return
+        setCandles(b.values)
+        setIndicators(ind)
+        if (b.values.length) setLivePrice(b.values[b.values.length - 1].c)
+      } catch {
+        if (!stopped) timer = window.setTimeout(load, 1500)
+      }
+    }
+    load()
+    return () => { stopped = true; clearTimeout(timer) }
   }, [selected, timeframe])
+
+  // Order book: fetch over REST as a fallback, refresh periodically while WS is down.
+  useEffect(() => {
+    let stopped = false
+    const fetchBook = async () => {
+      try {
+        const b = await api.orderbook(selected)
+        if (!stopped) setBook(b)
+      } catch { /* ignore */ }
+    }
+    fetchBook()
+    const t = setInterval(() => {
+      if (!connected) fetchBook()
+    }, 2500)
+    return () => { stopped = true; clearInterval(t) }
+  }, [selected, connected])
+
+  // Periodic candle refresh so newly formed bars appear (esp. on 1m).
+  useEffect(() => {
+    if (tab !== 'trading') return
+    let stopped = false
+    const intervalMs = timeframe === '1m' ? 10000 : timeframe === '5m' ? 20000 : 30000
+    const t = setInterval(async () => {
+      if (stopped) return
+      try {
+        const b = await api.candles(selected, timeframe, 400)
+        if (!stopped) setCandles(b.values)
+      } catch { /* ignore */ }
+    }, intervalMs)
+    return () => { stopped = true; clearInterval(t) }
+  }, [selected, timeframe, tab])
 
   const onWs = useCallback((msg: WsMessage) => {
     if (msg.type === 'hello') setConnected(true)
@@ -68,12 +128,12 @@ export default function App() {
     }
     if (msg.type === 'orderbook' && msg.book) setBook(msg.book)
   }, [])
-  const { send } = useWebSocket(onWs)
+  const { send, subscribe } = useWebSocket({ onMessage: onWs, onStatus: setConnected })
 
   const select = useCallback((s: string) => {
     setSelected(s)
-    send({ type: 'subscribe', symbol: s })
-  }, [send])
+    subscribe(s)
+  }, [subscribe])
 
   const prices = useMemo(() => {
     const m: Record<string, number> = {}

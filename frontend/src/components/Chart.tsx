@@ -110,6 +110,7 @@ export function Chart({ candles, indicators, live }: Props) {
     const ctx = ctxRef.current
     if (!ctx || !candles.length) return
     const data = candles.map((c) => ({ time: c.t as UTCTimestamp, open: c.o, high: c.h, low: c.l, close: c.c }))
+    const range = ctx.priceChart.timeScale().getVisibleLogicalRange()
     ctx.candle.setData(data)
     ctx.volume.setData(
       candles.map((c) => ({ time: c.t as UTCTimestamp, value: c.v, color: c.c >= c.o ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)' })),
@@ -133,6 +134,9 @@ export function Chart({ candles, indicators, live }: Props) {
         color: v >= 0 ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)',
       })) : []) as any[]
       ctx.macdH.setData(hist as never)
+    }
+    if (range) {
+      try { ctx.priceChart.timeScale().setVisibleLogicalRange(range) } catch { /* ignore */ }
     }
   }, [candles, indicators])
 
