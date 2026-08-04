@@ -41,37 +41,87 @@ A full-stack **paper-trading stock market simulator** built as a portfolio showc
 
 ## 🚀 Quick start
 
-### Option A — Docker
+> **Prerequisites**
+> - **Python 3.12+** (on Windows use `py`, on macOS/Linux `python3`)
+> - **Node.js 20+** and **npm**
+> - You need **two terminal windows**: one for the backend, one for the frontend.
+
+---
+
+### ▶ Method 1 — Console (fastest, copy-paste)
+
+**Terminal 1 — Backend** (API + live data, port `8000`):
+```bash
+# Windows
+cd backend
+py -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+
+# macOS / Linux
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
+
+**Terminal 2 — Frontend** (UI, port `5173`):
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open **http://localhost:5173** → the app should connect to the backend automatically.
+
+---
+
+### ✋ Method 2 — By hand (manual, no ready-made scripts)
+
+Use this when you don't want the one-liner scripts and prefer to do every step yourself.
+
+**Step 1 — Start the backend:**
+1. Open a terminal and go into the backend folder: `cd backend`
+2. Create a virtual environment: `py -m venv venv`
+3. Activate it: `venv\Scripts\activate` (macOS/Linux: `source venv/bin/activate`)
+4. Install dependencies: `pip install -r requirements.txt`
+5. Start the server: `uvicorn app.main:app --reload`
+6. Verify it's alive: open http://localhost:8000/docs (Swagger UI) — or run `curl http://localhost:8000/`
+
+**Step 2 — Start the frontend:**
+1. Open a **second** terminal and go into the frontend folder: `cd frontend`
+2. Install packages: `npm install`
+3. Start the dev server: `npm run dev`
+4. Open **http://localhost:5173** in your browser
+
+**Step 3 — Check the connection:**
+- The header badge should turn green **LIVE**
+- The ticker tape at the top starts scrolling
+- The watchlist on the left shows 20 tickers with prices
+- Click a symbol → chart, order book and indicators load
+
+**Step 4 — Stop everything** (when done): press `Ctrl+C` in both terminals.
+
+---
+
+### 🐳 Method 3 — Docker (one command, optional)
 ```bash
 docker compose up --build
 # frontend http://localhost:5173 · backend http://localhost:8000/docs
 ```
 
-### Option B — Local (Windows scripts included)
+---
+
+### 💡 Windows one-click scripts (optional shortcut)
+If you prefer not to type commands, the repo includes ready scripts:
 ```bash
-# terminal 1 — backend
-backend\run_backend.bat        # or:  run_backend.bat
-# terminal 2 — frontend
-frontend\run_frontend.bat      # or:  run_frontend.bat
+start.bat            # launches backend + frontend and opens the browser
+backend\run_backend.bat     # backend only (auto-creates venv on first run)
+frontend\run_frontend.bat   # frontend only
 ```
-Or simply run `start.bat`.
-
-> Windows note: the repo uses `py` (Python 3.12+) and Node 20+. `run_backend.bat` auto-creates a virtualenv.
-
-### Manual setup
-```bash
-# backend
-cd backend
-python -m venv venv
-venv\Scripts\activate            # linux: source venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload   # http://localhost:8000/docs
-
-# frontend
-cd frontend
-npm install
-npm run dev                     # http://localhost:5173
-```
+> Note: `run_backend.bat` uses `py` and creates the `venv` automatically on first launch.
 
 ---
 
